@@ -1,49 +1,124 @@
-(function showHelpAndExit() {
-    if (process.argv.includes('--help') || process.argv.includes('-h')) {
-        console.log(`\nUsage: node cdv2spm.js [path/to/plugin.xml] [options]\n\nOptions:\n  --force         Overwrite files without confirmation\n  --dry-run       Show what would be done, but do not write files\n  --verbose       Show debug information\n  --no-gitignore  Do not update .gitignore\n  --help, -h      Show this help message\n`);
-        process.exit(0);
-    }
-})();
-// Script to convert plugin.xml to a Package.swift scaffold
-// Usage: node cdv2spm.js path/to/plugin.xml
+#!/usr/bin/env node
 
-const fs = require('fs');
+/**
+ * Cordova plugin.xml to Swift Package converter
+ * Standalone version - no external dependencies
+ */
+
+const fs = require('fs').promises;
 const path = require('path');
+const readline = require('readline');
 
+// CLI flags
+const force = process.argv.includes('--force');
+const dryRun = process.argv.includes('--dry-run');
+const verbose = process.argv.includes('--verbose');
+const noGitignore = process.argv.includes('--no-gitignore');
+
+/** ANSI colors for log output */
+function colorize(level, message) {
+    const colors = {
+        info: '\x1b[36m',    // cyan
+        warn: '\x1b[33m',    // yellow
+        error: '\x1b[31m',   // red
+        success: '\x1b[32m', // green
+        debug: '\x1b[35m'    // magenta
+    };
+    const reset = '\x1b[0m';
+    return (colors[level] || '') + message + reset;
+}
+
+/** Unified logger with levels */
+function log(level, message) {
+    const prefix = {
+        info: '[INFO]',
+        warn: '[WARN]',
+        error: '[ERROR]',
+        success: '[SUCCESS]',
+        debug: '[DEBUG]'
+    }[level] || '';
+    if (level === 'debug' && !verbose) return;
+    console.log(colorize(level, `${prefix} ${message}`));
+}
+
+/** Ask user confirmation */
+function confirmAction(message, defaultYes = true) {
+    if (force) return Promise.resolve(true);
+    return new Promise((resolve) => {
+        const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+        const suffix = defaultYes ? ' (Y/n): ' : ' (y/N): ';
+        rl.question(message + suffix, (answer) => {
+            rl.close();
+            const normalized = answer.trim().toLowerCase();
+            if (!normalized) return resolve(defaultYes);
+            resolve(normalized === 'y' || normalized === 'yes');
+        });
+    });
+}
+
+/**
+ * Very naive XML parser only for plugin.xml structure
+ * Extracts plugin id and <pod> dependencies
+ */
 function parsePluginXml(content) {
-    // Extract <plugin id="...">
-    const pluginTag = content.match(/<plugin\s+[^>]*?id=["']([^"']+)["']/);
-    const name = pluginTag ? pluginTag[1] : 'Unknown';
+    const obj = { plugin: {} };
 
-    // Extract pod dependencies from <podspec> section
-    // Example: <pod name="OSInAppBrowserLib" spec="2.2.1" />
-    const podspecBlock = content.match(/<podspec>[\s\S]*?<\/podspec>/);
-    let dependencies = [];
-    if (podspecBlock) {
-        const podMatches = [...podspecBlock[0].matchAll(/<pod\s+name=["']([^"']+)["']\s+spec=["']([^"']+)["'][^>]*\/>/g)];
-        dependencies = podMatches.map(m => `${m[1]} (${m[2]})`);
+    // extract plugin id
+    const pluginIdMatch = content.match(/<plugin[^>]*id="([^"]+)"/);
+    if (pluginIdMatch) obj.plugin['@_id'] = pluginIdMatch[1];
+
+    // extract pods
+    const pods = [];
+    const podRegex = /<pod\s+name="([^"]+)"\s+spec="([^"]+)"\s*\/>/g;
+    let match;
+    while ((match = podRegex.exec(content)) !== null) {
+        pods.push({ '@_name': match[1], '@_spec': match[2] });
+    }
+    if (pods.length > 0) {
+        obj.plugin.podspec = { pods };
     }
 
-    return {
-        name,
-        dependencies,
+    return { 
+        name: obj.plugin['@_id'] || 'Unknown',
+        dependencies: pods.map(p => `${p['@_name']} (${p['@_spec']})`),
+        parsed: obj,
+        raw: content // keep original XML string for later rewriting
     };
 }
 
+/**
+ * Build updated plugin.xml string
+ */
+function buildPluginXml(meta) {
+    let xml = meta.raw;
+
+    // remove <podspec> if necessary
+    if (!meta.parsed.plugin.podspec) {
+        xml = xml.replace(/<podspec>[\s\S]*?<\/podspec>/, '');
+    }
+
+    // ensure iOS platform has package="swift"
+    xml = xml.replace(
+        /<platform\s+name="ios"([^>]*)>/,
+        (m, attrs) => m.includes('package=') ? m : `<platform name="ios"${attrs} package="swift">`
+    );
+
+    return xml;
+}
+
+/**
+ * Generate a Package.swift template
+ */
 function generatePackageSwift(meta) {
-    // Always add cordova-ios as a package dependency
     const packageDependencies = [
         '        .package(url: "https://github.com/apache/cordova-ios.git", branch: "master")',
         ...meta.dependencies.map(dep => `        // ${dep}`)
     ];
 
-    // Always add Cordova as a target dependency
     const targetDependencies = [
-        '                .product(name: "Cordova", package: "cordova-ios")'
+        '                .product(name: "Cordova", package: "cordova-ios")',
+        ...meta.dependencies.map(dep => `                // ${dep}`)
     ];
-
-    // Add pod dependencies as comments (or adapt as needed)
-    targetDependencies.push(...meta.dependencies.map(dep => `                // ${dep}`));
 
     return `// swift-tools-version:5.9
 import PackageDescription
@@ -71,24 +146,26 @@ ${targetDependencies.join(',\n')}
 `;
 }
 
-// Remove <podspec> section from plugin.xml (pure, returns updated content)
-function removePodspecSection(content) {
-    return content.replace(/^[ \t]*<podspec>[\s\S]*?<\/podspec>[ \t]*\r?\n?/gm, '');
-}
-
-// Write updated plugin.xml if changed
-function writePluginXmlIfChanged(pluginXmlPath, oldContent, newContent) {
-    if (oldContent !== newContent) {
-        fs.writeFileSync(pluginXmlPath, newContent);
+/** Remove podspec section from parsed object */
+function removePodspec(plugin) {
+    if (plugin.plugin?.podspec) {
+        delete plugin.plugin.podspec;
         return true;
     }
     return false;
 }
 
-// Ensure .build/ and Package.resolved are in .gitignore
-function getUpdatedGitignoreContent(currentContent) {
-    let lines = currentContent ? currentContent.split(/\r?\n/) : [];
+/** Update .gitignore with SwiftPM build artifacts */
+async function updateGitignore(targetDir) {
+    const gitignorePath = path.join(targetDir, '.gitignore');
+    let currentContent = '';
+    try {
+        currentContent = await fs.readFile(gitignorePath, 'utf8');
+    } catch (_) {}
+
+    let lines = currentContent.split(/\r?\n/).filter(Boolean);
     let changed = false;
+
     if (!lines.includes('.build/')) {
         lines.push('.build/');
         changed = true;
@@ -97,171 +174,107 @@ function getUpdatedGitignoreContent(currentContent) {
         lines.push('Package.resolved');
         changed = true;
     }
+
     if (changed) {
-        const filtered = lines.filter((line, idx, arr) => line !== '' || arr[idx - 1] !== '');
-        return filtered.join('\n');
-    }
-    return null; // no change
-}
-
-function updateGitignore(targetDir) {
-    const gitignorePath = path.join(targetDir, '.gitignore');
-    let existed = fs.existsSync(gitignorePath);
-    let currentContent = existed ? fs.readFileSync(gitignorePath, 'utf8') : '';
-    const updatedContent = getUpdatedGitignoreContent(currentContent);
-    if (updatedContent) {
-        fs.writeFileSync(gitignorePath, updatedContent);
-        if (existed) {
-            console.log('[SUCCESS] .gitignore updated with .build/ and Package.resolved');
-        } else {
-            console.log('[SUCCESS] .gitignore created with .build/ and Package.resolved');
+        const newContent = lines.join('\n') + '\n';
+        if (!dryRun) {
+            await fs.writeFile(gitignorePath, newContent);
         }
+        log('success', `${gitignorePath} updated with .build/ and Package.resolved`);
     } else {
-        console.log('[INFO] .gitignore already contains .build/ and Package.resolved');
+        log('info', `.gitignore already contains .build/ and Package.resolved`);
     }
 }
 
-const readline = require('readline');
-function askUser(question) {
-    return new Promise((resolve) => {
-        const rl = readline.createInterface({
-            input: process.stdin,
-            output: process.stdout
-        });
-        rl.question(question, (answer) => {
-            rl.close();
-            resolve(answer.trim().toLowerCase());
-        });
-    });
-}
-
-let pluginXmlPath;
-
-// CLI flags
-const force = process.argv.includes('--force');
-const dryRun = process.argv.includes('--dry-run');
-const verbose = process.argv.includes('--verbose');
-const noGitignore = process.argv.includes('--no-gitignore');
-
+/** Main entry */
 (async () => {
-try {
-    if (verbose) {
-        console.log('[DEBUG] CLI flags:', { force, dryRun, verbose, noGitignore });
-    }
+    try {
+        let pluginXmlPath;
+        if (process.argv.length < 3 || process.argv[2].startsWith('--')) {
+            pluginXmlPath = path.resolve(process.cwd(), 'plugin.xml');
+            log('info', `Using plugin.xml at ${pluginXmlPath}`);
+        } else {
+            pluginXmlPath = path.resolve(process.argv[2]);
+            log('info', `Using plugin.xml at ${pluginXmlPath}`);
+        }
 
-    if (process.argv.length < 3 || (process.argv[2] && process.argv[2].startsWith('--'))) {
-        // Default to plugin.xml in the current working directory
-        pluginXmlPath = path.resolve(process.cwd(), 'plugin.xml');
-        if (!fs.existsSync(pluginXmlPath)) {
-            console.error('[ERROR] plugin.xml not found in the current directory.');
-            console.error('[ERROR] Usage: node pod2spm.js [path/to/plugin.xml] [--force]');
+        let pluginXmlContent;
+        try {
+            pluginXmlContent = await fs.readFile(pluginXmlPath, 'utf8');
+        } catch (err) {
+            log('error', `Failed to read plugin.xml: ${err.message}`);
             process.exit(1);
         }
-        console.log('[INFO] No plugin.xml path provided, using', pluginXmlPath);
-    } else {
-        pluginXmlPath = process.argv[2];
-        console.log(`[INFO] Using plugin.xml at: ${pluginXmlPath}`);
-    }
 
-    console.log('[INFO] Reading plugin.xml...');
-    let pluginXmlContent;
-    try {
-        pluginXmlContent = fs.readFileSync(pluginXmlPath, 'utf8');
+        const meta = parsePluginXml(pluginXmlContent);
+        log('info', `Plugin name: ${meta.name}`);
+        if (meta.dependencies.length) {
+            log('info', `Dependencies found: ${meta.dependencies.join(', ')}`);
+        } else {
+            log('warn', 'No <pod> dependencies found.');
+        }
+
+        // Generate Package.swift
+        const packageSwift = generatePackageSwift(meta);
+        const outPath = path.join(path.dirname(pluginXmlPath), 'Package.swift');
+        let writePkg = true;
+        if (await fs.stat(outPath).catch(() => false)) {
+            if (!await confirmAction(`Package.swift already exists. Overwrite?`)) {
+                log('info', 'Skipping overwrite of Package.swift');
+                writePkg = false;
+            }
+        }
+        if (writePkg) {
+            if (dryRun) {
+                log('info', `[DRY-RUN] Package.swift would be written at ${outPath}`);
+            } else {
+                await fs.writeFile(outPath, packageSwift);
+                log('success', `Package.swift generated at ${outPath}`);
+            }
+        }
+
+        // Update .gitignore
+        if (!noGitignore) {
+            if (await confirmAction(`Update .gitignore in ${path.dirname(outPath)}?`)) {
+                if (dryRun) {
+                    log('info', `[DRY-RUN] .gitignore would be updated in ${path.dirname(outPath)}`);
+                } else {
+                    await updateGitignore(path.dirname(outPath));
+                }
+            }
+        }
+
+        // Modify plugin.xml if needed
+        let changed = false;
+        if (meta.parsed.plugin.podspec) {
+            if (await confirmAction('Remove <podspec> section from plugin.xml?')) {
+                changed = removePodspec(meta.parsed) || changed;
+                log('success', '<podspec> removed from plugin.xml');
+            }
+        }
+
+        if (changed) {
+            const newXml = buildPluginXml(meta);
+            if (dryRun) {
+                log('info', `[DRY-RUN] plugin.xml would be updated`);
+            } else {
+                await fs.writeFile(pluginXmlPath, newXml);
+                log('success', 'plugin.xml updated');
+            }
+        }
+
+        // Final notes
+        if (!dryRun && meta.dependencies.length > 0) {
+            console.log('\n' + '='.repeat(60));
+            console.log('[IMPORTANT] Manual steps required:');
+            console.log('CocoaPods dependencies were added as comments in Package.swift.');
+            console.log('Convert them manually to Swift Package Manager equivalents.');
+            console.log('='.repeat(60));
+        } else if (!dryRun) {
+            log('success', 'Conversion completed! Your Package.swift is ready.');
+        }
     } catch (err) {
-        console.error(`[ERROR] Failed to read plugin.xml: ${err.message}`);
+        log('error', `Unexpected error: ${err.message}`);
         process.exit(1);
     }
-
-    console.log('[INFO] Extracting metadata from plugin.xml...');
-    const meta = parsePluginXml(pluginXmlContent);
-    console.log(`[INFO] Plugin name: ${meta.name}`);
-    if (meta.dependencies.length > 0) {
-        console.log(`[INFO] Dependencies found: ${meta.dependencies.join(', ')}`);
-    } else {
-        console.log('[WARN] No <pod> dependencies found.');
-    }
-    console.log('[INFO] Generating Package.swift...');
-    const packageSwift = generatePackageSwift(meta);
-
-    // Always resolve outPath and .gitignore relative to pluginXmlPath (absolute)
-    const pluginXmlAbsPath = path.isAbsolute(pluginXmlPath) ? pluginXmlPath : path.resolve(process.cwd(), pluginXmlPath);
-    const outPath = path.join(path.dirname(pluginXmlAbsPath), 'Package.swift');
-    let writePackage = true;
-    if (fs.existsSync(outPath) && !force) {
-        const answer = await askUser(`[CONFIRM] Package.swift already exists. Overwrite? (Y/n): `);
-        if (answer === 'n' || answer === 'no') {
-            console.log('[INFO] Skipping Package.swift overwrite.');
-            writePackage = false;
-        }
-    }
-    if (writePackage) {
-        if (dryRun) {
-            console.log(`[DRY-RUN] Would write Package.swift to: ${outPath}`);
-        } else {
-            try {
-                fs.writeFileSync(outPath, packageSwift);
-                console.log(`[SUCCESS] Package.swift generated at: ${outPath}`);
-            } catch (err) {
-                console.error(`[ERROR] Failed to write Package.swift: ${err.message}`);
-                process.exit(1);
-            }
-        }
-    }
-
-    if (!noGitignore) {
-        const targetDir = path.dirname(outPath);
-        let editGitignore = true;
-        if (!force) {
-            const answer = await askUser(`[CONFIRM] Update .gitignore in ${targetDir}? (Y/n): `);
-            if (answer === 'n' || answer === 'no') {
-                console.log('[INFO] Skipping .gitignore update.');
-                editGitignore = false;
-            }
-        }
-        if (editGitignore) {
-            console.log('[INFO] Updating .gitignore...');
-            if (dryRun) {
-                console.log(`[DRY-RUN] Would update .gitignore in: ${targetDir}`);
-            } else {
-                try {
-                    updateGitignore(targetDir);
-                } catch (err) {
-                    console.error(`[ERROR] Failed to update .gitignore: ${err.message}`);
-                }
-            }
-        }
-    } else if (verbose) {
-        console.log('[DEBUG] Skipping .gitignore update due to --no-gitignore');
-    }
-
-    // Only remove <podspec> if user confirms or --force
-    let removePodspec = true;
-    const hasPodspec = /<podspec>[\s\S]*?<\/podspec>/.test(pluginXmlContent);
-    if (hasPodspec && !force) {
-        const answer = await askUser(`[CONFIRM] Remove <podspec> section from plugin.xml? (Y/n): `);
-        if (answer === 'n' || answer === 'no') {
-            console.log('[INFO] Skipping <podspec> removal from plugin.xml.');
-            removePodspec = false;
-        }
-    }
-    if (removePodspec) {
-        if (dryRun) {
-            console.log('[DRY-RUN] Would remove <podspec> section from plugin.xml');
-        } else {
-            try {
-                const updatedContent = removePodspecSection(pluginXmlContent);
-                if (writePluginXmlIfChanged(pluginXmlPath, pluginXmlContent, updatedContent)) {
-                    console.log('[SUCCESS] <podspec> section removed from plugin.xml');
-                } else {
-                    console.log('[WARN] No <podspec> section found in plugin.xml');
-                }
-            } catch (err) {
-                console.error(`[ERROR] Failed to update plugin.xml: ${err.message}`);
-            }
-        }
-    }
-} catch (err) {
-    console.error(`[ERROR] Unexpected error: ${err.message}`);
-    process.exit(1);
-}
 })();
