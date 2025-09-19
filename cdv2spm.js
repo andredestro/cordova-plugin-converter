@@ -260,6 +260,27 @@ try {
             }
         }
     }
+
+    // Final informational message about manual steps required
+    if (!dryRun && meta.dependencies.length > 0) {
+        console.log('\n' + '='.repeat(60));
+        console.log('[IMPORTANT] Manual steps required:');
+        console.log('CocoaPods dependencies were added as comments in Package.swift.');
+        console.log('You must manually convert them to Swift Package Manager:');
+        console.log('');
+        console.log('1. Review commented dependencies in Package.swift');
+        console.log('2. Find SPM equivalents (GitHub, Swift Package Index)');
+        console.log('3. Replace comments with .package() declarations');
+        console.log('4. Update target dependencies accordingly');
+        console.log('5. Test that your plugin builds correctly');
+        console.log('');
+        console.log('Example:');
+        console.log('  // OSInAppBrowserLib (2.2.1)  ← Replace this comment');
+        console.log('  .package(url: "https://github.com/outsystems/OSInAppBrowserLib-iOS.git", from: "2.2.1")');
+        console.log('='.repeat(60));
+    } else if (!dryRun) {
+        console.log('\n[SUCCESS] Conversion completed! Your Package.swift is ready to use.');
+    }
 } catch (err) {
     console.error(`[ERROR] Unexpected error: ${err.message}`);
     process.exit(1);

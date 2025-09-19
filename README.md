@@ -52,7 +52,16 @@ node cdv2spm.js path/to/my-plugin.xml --no-gitignore
 You can run the script directly from GitHub without cloning:
 
 ```sh
-curl -sL https://raw.githubusercontent.com/andredestro/cordova-plugin-converter/main/cdv2spm.js | node - path/to/plugin.xml
+# Use --force to skip interactive prompts (recommended for remote execution)
+curl -sL https://raw.githubusercontent.com/andredestro/cordova-plugin-converter/main/cdv2spm.js | node - path/to/plugin.xml --force
+```
+
+**Note:** Interactive prompts don't work with piped execution. Use `--force` to automatically overwrite files, or download the script first:
+
+```sh
+# Alternative: download and run locally for interactive mode
+curl -sL https://raw.githubusercontent.com/andredestro/cordova-plugin-converter/main/cdv2spm.js -o cdv2spm.js
+node cdv2spm.js plugin.xml
 ```
 
 ## What It Does
@@ -72,6 +81,44 @@ The script generates a Package.swift with:
 - cordova-ios package dependency from Apache's GitHub repository
 - Your plugin as a library target with source path pointing to `src/ios`
 - CocoaPods dependencies included as comments for manual review
+
+## Important Limitations
+
+### CocoaPods Dependencies
+The script **cannot automatically convert CocoaPods dependencies** to Swift Package Manager equivalents. Here's why:
+
+- **Different repositories**: CocoaPods and SPM often use different repository URLs
+- **Name differences**: Package names may differ between CocoaPods and SPM
+- **Availability**: Not all CocoaPods have SPM equivalents
+- **Version mapping**: Version schemes may not match directly
+
+**What the script does:**
+- Extracts `<pod>` dependencies from your `plugin.xml`
+- Adds them as **comments** in the generated `Package.swift`
+- You must **manually** find and add the correct SPM dependencies
+
+**Manual steps required:**
+1. Review the commented dependencies in `Package.swift`
+2. Search for SPM equivalents (GitHub, Swift Package Index, etc.)
+3. Replace comments with actual `.package()` declarations
+4. Update target dependencies accordingly
+5. Test that your plugin builds correctly
+
+### Example
+If your `plugin.xml` contains:
+```xml
+<pod name="OSInAppBrowserLib" spec="2.2.1" />
+```
+
+The script generates:
+```swift
+// OSInAppBrowserLib (2.2.1)
+```
+
+You need to manually replace it with:
+```swift
+.package(url: "https://github.com/outsystems/OSInAppBrowserLib-iOS.git", from: "2.2.1")
+```
 
 ## Requirements
 - Node.js 14 or newer
