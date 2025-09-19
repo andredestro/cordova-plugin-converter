@@ -65,6 +65,19 @@ ${targetDependencies.join(',\n')}
 `;
 }
 
+// Remove <podspec> section from plugin.xml
+function removePodspecFromPluginXml(pluginXmlPath, content) {
+    const updatedContent = content.replace(/^[ \t]*<podspec>[\s\S]*?<\/podspec>[ \t]*\r?\n?/gm, '');
+    if (updatedContent !== content) {
+        fs.writeFileSync(pluginXmlPath, updatedContent);
+        console.log(`<podspec> section removed from ${pluginXmlPath}`);
+        return true;
+    } else {
+        console.log('No <podspec> section found in plugin.xml');
+        return false;
+    }
+}
+
 // Ensure .build/ and Package.resolved are in .gitignore
 function updateGitignore() {
     const gitignorePath = path.join(process.cwd(), '.gitignore');
@@ -103,12 +116,14 @@ if (process.argv.length < 3) {
     pluginXmlPath = process.argv[2];
 }
 
-updateGitignore();
 
 const pluginXmlContent = fs.readFileSync(pluginXmlPath, 'utf8');
 const meta = parsePluginXml(pluginXmlContent);
-const swiftPkg = generatePackageSwift(meta);
+const packageSwift = generatePackageSwift(meta);
 
 const outPath = path.join(path.dirname(pluginXmlPath), 'Package.swift');
-fs.writeFileSync(outPath, swiftPkg);
+fs.writeFileSync(outPath, packageSwift);
 console.log(`Package.swift generated at ${outPath}`);
+
+updateGitignore();
+removePodspecFromPluginXml(pluginXmlPath, pluginXmlContent);
