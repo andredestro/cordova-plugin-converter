@@ -2,7 +2,6 @@
 
 /**
  * Cordova plugin.xml to Swift Package converter
- * Standalone version - no external dependencies
  */
 
 const fs = require('fs').promises;
@@ -64,7 +63,7 @@ function parsePluginXml(content) {
     const obj = { plugin: {} };
 
     // extract plugin id
-    const pluginIdMatch = content.match(/<plugin[^>]*id="([^"]+)"/);
+    const pluginIdMatch = content.match(/<plugin[^>]*\s+id="([^"]+)"/i);
     if (pluginIdMatch) obj.plugin['@_id'] = pluginIdMatch[1];
 
     // extract pods

@@ -5,6 +5,7 @@ A Node.js script to convert a Cordova `plugin.xml` into a Swift Package Manager 
 ## Features
 - Parses the plugin ID and CocoaPods dependencies from your `plugin.xml`
 - Generates a basic `Package.swift` file for SwiftPM integration with cordova-ios dependency
+- Automatically adds `package="swift"` attribute to iOS platform in `plugin.xml` if not present
 - Automatically updates (or creates) `.gitignore` to include `.build/` and `Package.resolved`
 - Optionally removes the `<podspec>` section from `plugin.xml` after conversion
 - Interactive confirmation prompts for file overwrites and modifications
@@ -71,8 +72,9 @@ node cdv2spm.js plugin.xml
    - Cordova-ios as a package dependency
    - Your plugin as a library target
    - CocoaPods dependencies as comments for manual adaptation
-3. **Updates .gitignore** - Adds Swift Package Manager build artifacts to ignore list
-4. **Cleans plugin.xml** - Optionally removes `<podspec>` sections after conversion
+3. **Updates plugin.xml** - Ensures the iOS platform has `package="swift"` attribute for SPM compatibility
+4. **Updates .gitignore** - Adds Swift Package Manager build artifacts to ignore list
+5. **Cleans plugin.xml** - Optionally removes `<podspec>` sections after conversion
 
 ## Generated Package.swift Structure
 
@@ -107,7 +109,11 @@ The script **cannot automatically convert CocoaPods dependencies** to Swift Pack
 ### Example
 If your `plugin.xml` contains:
 ```xml
-<pod name="OSInAppBrowserLib" spec="2.2.1" />
+<podspec>
+    <pods>
+        <pod name="OSInAppBrowserLib" spec="2.2.1" />
+    </pods>
+</podspec>
 ```
 
 The script generates:
@@ -119,6 +125,26 @@ You need to manually replace it with:
 ```swift
 .package(url: "https://github.com/outsystems/OSInAppBrowserLib-iOS.git", from: "2.2.1")
 ```
+
+## iOS Platform Swift Package Support
+
+The script automatically ensures your iOS platform configuration is compatible with Swift Package Manager by adding the `package="swift"` attribute:
+
+**Before:**
+```xml
+<platform name="ios">
+    <!-- platform configuration -->
+</platform>
+```
+
+**After:**
+```xml
+<platform name="ios" package="swift">
+    <!-- platform configuration -->
+</platform>
+```
+
+This attribute tells Cordova to use Swift Package Manager for dependency resolution on iOS instead of CocoaPods.
 
 ## Requirements
 - Node.js 14 or newer
