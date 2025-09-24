@@ -1,162 +1,326 @@
-# Cordova Plugin Converter
+# cdv2spm - Cordova Plugin to Swift Package Manager Converter
 
-A Node.js script to convert a Cordova `plugin.xml` into a Swift Package Manager `Package.swift` for iOS plugins.
+A Swift command-line tool that converts Cordova `plugin.xml` files to Swift Package Manager `Package.swift` format, facilitating the migration from CocoaPods to Swift Package Manager for iOS Cordova plugins.
 
 ## Features
-- Parses the plugin ID and CocoaPods dependencies from your `plugin.xml`
-- Generates a basic `Package.swift` file for SwiftPM integration with cordova-ios dependency
-- Automatically adds `package="swift"` attribute to iOS platform in `plugin.xml` if not present
-- Automatically updates (or creates) `.gitignore` to include `.build/` and `Package.resolved`
-- Optionally removes the `<podspec>` section from `plugin.xml` after conversion
-- Interactive confirmation prompts for file overwrites and modifications
-- Comprehensive CLI options for automation and debugging
+
+- 📦 **Package.swift Generation**: Creates properly structured Swift Package Manager manifests
+- 🤖 **Auto-Resolve Dependencies**: Automatically converts CocoaPods to Swift Package Manager equivalents
+- ⚙️ **Automatic iOS Platform Updates**: Adds `package="swift"` to iOS platform
+- 🙈 **Gitignore Updates**: Adds Swift Package Manager build artifacts to `.gitignore`
+- 🎨 **Colorized Output**: Beautiful, colored terminal output with different log levels
+- 🔧 **Interactive Mode**: Prompts for confirmation before making changes
+- 🏃‍♂️ **Dry Run Mode**: Preview changes without modifying files
+- 📁 **Conditional Backup Creation**: Creates backups when using `--backup` flag
+- ✅ **Comprehensive Testing**: Full test coverage for all major components
+
+## Installation
+
+### Using Make (Recommended)
+
+```bash
+# Clone the repository
+git clone https://github.com/andredestro/cordova-plugin-converter.git
+cd cordova-plugin-converter
+
+# Build and install
+make install
+```
+
+This will install the `cdv2spm` binary to `/usr/local/bin`.
+
+### Manual Installation
+
+```bash
+# Build the project
+swift build -c release
+
+# Copy binary to your PATH
+cp .build/release/cdv2spm /usr/local/bin/
+```
+
+### Running from Build Directory
+
+```bash
+# Build and run directly
+swift build
+.build/debug/cdv2spm --help
+```
 
 ## Usage
 
 ### Basic Usage
-```sh
-node cdv2spm.js [path/to/plugin.xml] [options]
+
+```bash
+# Convert plugin.xml in current directory
+cdv2spm
+
+# Convert specific plugin.xml file
+cdv2spm /path/to/plugin.xml
+
+# Preview changes without modifying files
+cdv2spm --dry-run --verbose
+
+# Force conversion without prompts
+cdv2spm --force
+
+# Skip .gitignore updates
+cdv2spm --no-gitignore
 ```
 
-If you omit the path, it will look for `plugin.xml` in the current directory.
-
 ### Command Line Options
-- `--force` - Overwrite files without confirmation prompts
-- `--dry-run` - Show what would be done without actually writing files
-- `--verbose` - Show debug information during execution
-- `--no-gitignore` - Skip updating the .gitignore file
-- `--help, -h` - Show help message and exit
+
+- `--force`: Skip all confirmation prompts
+- `--dry-run`: Preview changes without writing files
+- `--verbose`: Enable detailed logging output
+- `--no-gitignore`: Skip .gitignore updates
+- `--backup`: Create backups of modified files
+- `--auto-resolve`: Automatically resolve CocoaPods to SPM dependencies
+- `--help`, `-h`: Show help message
 
 ### Examples
 
-**Basic conversion with prompts:**
-```sh
-node cdv2spm.js
+**Convert a plugin with CocoaPods dependencies:**
+```bash
+cdv2spm path/to/plugin.xml --verbose
 ```
 
-**Force overwrite without prompts:**
-```sh
-node cdv2spm.js plugin.xml --force
+**Convert with backup creation:**
+```bash
+cdv2spm path/to/plugin.xml --backup --verbose
 ```
 
-**Preview changes without writing files:**
-```sh
-node cdv2spm.js plugin.xml --dry-run --verbose
+**Preview conversion for multiple plugins:**
+```bash
+find . -name "plugin.xml" -exec cdv2spm --dry-run {} \;
 ```
 
-**Convert specific plugin.xml and skip .gitignore update:**
-```sh
-node cdv2spm.js path/to/my-plugin.xml --no-gitignore
+**Automated conversion in CI/CD:**
+```bash
+cdv2spm --force --no-gitignore plugin.xml
 ```
 
-### Remote Execution
-You can run the script directly from GitHub without cloning:
-
-```sh
-# Use --force to skip interactive prompts (recommended for remote execution)
-curl -sL https://raw.githubusercontent.com/andredestro/cordova-plugin-converter/main/cdv2spm.js | node - path/to/plugin.xml --force
-```
-
-**Note:** Interactive prompts don't work with piped execution. Use `--force` to automatically overwrite files, or download the script first:
-
-```sh
-# Alternative: download and run locally for interactive mode
-curl -sL https://raw.githubusercontent.com/andredestro/cordova-plugin-converter/main/cdv2spm.js -o cdv2spm.js
-node cdv2spm.js plugin.xml
+**Automatic dependency resolution:**
+```bash
+cdv2spm --auto-resolve --verbose plugin.xml
 ```
 
 ## What It Does
 
-1. **Parses plugin.xml** - Extracts plugin ID and CocoaPods dependencies from `<podspec>` sections
-2. **Generates Package.swift** - Creates a SwiftPM package file with:
-   - Cordova-ios as a package dependency
-   - Your plugin as a library target
-   - CocoaPods dependencies as comments for manual adaptation
-3. **Updates plugin.xml** - Ensures the iOS platform has `package="swift"` attribute for SPM compatibility
-4. **Updates .gitignore** - Adds Swift Package Manager build artifacts to ignore list
-5. **Cleans plugin.xml** - Optionally removes `<podspec>` sections after conversion
+1. **Parses plugin.xml**: Extracts plugin ID and CocoaPods dependencies (iOS platform only)
+2. **Auto-resolves dependencies** (with `--auto-resolve`): Automatically converts CocoaPods to SPM equivalents when possible
+3. **Generates Package.swift**: Creates a properly structured Swift Package Manager manifest
+4. **Updates plugin.xml**: Always adds `package="swift"` to iOS platform, optionally removes `<podspec>` sections
+5. **Updates .gitignore**: Adds `.build/`, `.swiftpm/`, and `Package.resolved` entries (after plugin.xml update)
+6. **Creates backups**: Conditionally backs up files when `--backup` flag is used
 
-## Generated Package.swift Structure
+## Automatic CocoaPods Resolution
 
-The script generates a Package.swift with:
-- iOS 14+ platform requirement
-- cordova-ios package dependency from Apache's GitHub repository
-- Your plugin as a library target with source path pointing to `src/ios`
-- CocoaPods dependencies included as comments for manual review
+When using the `--auto-resolve` flag, the tool attempts to automatically convert CocoaPods dependencies to their Swift Package Manager equivalents by:
 
-## Important Limitations
+1. **Fetching pod specifications**: Uses `pod spec cat <pod_name> --version=<version>` to get pod metadata
+2. **Extracting Git repository information**: Finds the source Git URL and tag/branch from the podspec
+3. **Checking for Package.swift**: Verifies if the Git repository contains a `Package.swift` file
+4. **Parsing Swift package information**: Extracts library name and dependency details
+5. **Converting version requirements**: Translates CocoaPods version syntax to SPM equivalents
 
-### CocoaPods Dependencies
-The script **cannot automatically convert CocoaPods dependencies** to Swift Package Manager equivalents. Here's why:
+### Resolution Process
 
-- **Different repositories**: CocoaPods and SPM often use different repository URLs
-- **Name differences**: Package names may differ between CocoaPods and SPM
-- **Availability**: Not all CocoaPods have SPM equivalents
-- **Version mapping**: Version schemes may not match directly
+The tool follows this process for each CocoaPods dependency:
 
-**What the script does:**
-- Extracts `<pod>` dependencies from your `plugin.xml`
-- Adds them as **comments** in the generated `Package.swift`
-- You must **manually** find and add the correct SPM dependencies
-
-**Manual steps required:**
-1. Review the commented dependencies in `Package.swift`
-2. Search for SPM equivalents (GitHub, Swift Package Index, etc.)
-3. Replace comments with actual `.package()` declarations
-4. Update target dependencies accordingly
-5. Test that your plugin builds correctly
-
-### Example
-If your `plugin.xml` contains:
-```xml
-<podspec>
-    <pods>
-        <pod name="OSInAppBrowserLib" spec="2.2.1" />
-    </pods>
-</podspec>
+```
+CocoaPods dependency → pod spec cat → Git repository → Package.swift → SPM dependency
 ```
 
-The script generates:
+**Success criteria:**
+- Pod specification is accessible via CocoaPods
+- Pod has a Git source repository
+- Repository contains a valid `Package.swift` file
+- Package.swift defines a library product (not just executable)
+
+**Fallback behavior:**
+- If automatic resolution fails, generates TODO comments for manual conversion
+- Provides detailed status information for each dependency
+- Continues processing other dependencies even if some fail
+
+## Input/Output Example
+
+### Input: plugin.xml
+```xml
+<plugin id="com.example.myplugin" version="1.0.0">
+    <platform name="ios">
+        <podspec>
+            <pods>
+                <pod name="AFNetworking" spec="~> 4.0"/>
+                <pod name="SDWebImage" spec="~> 5.0"/>
+            </pods>
+        </podspec>
+    </platform>
+</plugin>
+```
+
+### Output: Package.swift (Traditional)
 ```swift
-// OSInAppBrowserLib (2.2.1)
+// swift-tools-version:5.9
+import PackageDescription
+
+let package = Package(
+    name: "com.example.myplugin",
+    platforms: [.iOS(.v14)],
+    products: [
+        .library(
+            name: "com.example.myplugin",
+            targets: ["com.example.myplugin"])
+    ],
+    dependencies: [
+        .package(url: "https://github.com/apache/cordova-ios.git", branch: "master"),
+        // TODO: Convert CocoaPods dependency: AFNetworking (~> 4.0)
+        // TODO: Convert CocoaPods dependency: SDWebImage (~> 5.0)
+    ],
+    targets: [
+        .target(
+            name: "com.example.myplugin",
+            dependencies: [
+                .product(name: "Cordova", package: "cordova-ios"),
+                // TODO: Add Swift Package equivalent for: AFNetworking (~> 4.0)
+                // TODO: Add Swift Package equivalent for: SDWebImage (~> 5.0)
+            ],
+            path: "src/ios")
+    ]
+)
 ```
 
-You need to manually replace it with:
+### Output: Package.swift (with `--auto-resolve`)
 ```swift
-.package(url: "https://github.com/outsystems/OSInAppBrowserLib-iOS.git", from: "2.2.1")
+// swift-tools-version:5.9
+import PackageDescription
+
+let package = Package(
+    name: "com.example.myplugin",
+    platforms: [.iOS(.v14)],
+    products: [
+        .library(
+            name: "com.example.myplugin",
+            targets: ["com.example.myplugin"])
+    ],
+    dependencies: [
+        .package(url: "https://github.com/apache/cordova-ios.git", branch: "master"),
+        .package(url: "https://github.com/AFNetworking/AFNetworking.git", .upToNextMajor(from: "4.0")),
+        .package(url: "https://github.com/SDWebImage/SDWebImage.git", .upToNextMajor(from: "5.0"))
+    ],
+    targets: [
+        .target(
+            name: "com.example.myplugin",
+            dependencies: [
+                .product(name: "Cordova", package: "cordova-ios"),
+                .product(name: "AFNetworking", package: "AFNetworking"),
+                .product(name: "SDWebImage", package: "SDWebImage")
+            ],
+            path: "src/ios")
+    ]
+)
 ```
 
-## iOS Platform Swift Package Support
+## Architecture
 
-The script automatically ensures your iOS platform configuration is compatible with Swift Package Manager by adding the `package="swift"` attribute:
+The tool is built with a modular, well-tested architecture:
 
-**Before:**
-```xml
-<platform name="ios">
-    <!-- platform configuration -->
-</platform>
+### Core Components
+
+- **Models**: Data structures for plugin metadata and configuration
+- **XMLParser**: Robust XML parsing using SWXMLHash
+- **PackageGenerator**: Swift Package Manager manifest generation
+- **CLI**: Command-line interface with colorized logging
+- **FileSystemManager**: Safe file operations with dry-run support
+- **Converter**: Main orchestration class
+
+### Key Features
+
+- **Error Handling**: Comprehensive error types with descriptive messages
+- **Logging**: Multi-level logging with ANSI colors
+- **Testing**: Full unit test coverage for all components
+- **Safety**: Backup creation and dry-run mode prevent data loss
+
+## Development
+
+### Prerequisites
+
+- Swift 5.9 or later
+- Xcode 15.0 or later (for iOS development)
+
+### Building
+
+```bash
+# Build the project
+make build
+
+# Run tests
+make test
+
+# Run tests with verbose Swift output
+swift test --verbose
 ```
 
-**After:**
-```xml
-<platform name="ios" package="swift">
-    <!-- platform configuration -->
-</platform>
+### Code Quality
+
+```bash
+# Lint code (requires swiftlint)
+make lint
+
+# Format code (requires swiftformat)
+make format
+
+# Generate Xcode project
+make xcode
 ```
 
-This attribute tells Cordova to use Swift Package Manager for dependency resolution on iOS instead of CocoaPods.
+### Development Dependencies
 
-## Requirements
-- Node.js 14 or newer
+Optional tools for development:
 
-## Interactive Mode
+```bash
+# Install SwiftLint for code linting
+brew install swiftlint
 
-By default, the script runs in interactive mode and will ask for confirmation before:
-- Overwriting existing `Package.swift` files
-- Updating `.gitignore` 
-- Removing `<podspec>` sections from `plugin.xml`
+# Install SwiftFormat for code formatting
+brew install swiftformat
+```
 
-Use `--force` to skip all confirmations for automated workflows.
+### Testing
+
+The project includes comprehensive unit tests (**87 tests** covering all major components):
+
+```bash
+# Run all tests
+swift test
+
+# Run specific test file
+swift test --filter XMLParserBasicTests
+
+# Run with verbose output
+swift test --verbose
+```
+
+### Available Make Targets
+
+Run `make help` to see all available targets:
+
+- `build` - Build in release mode
+- `test` - Run all tests
+- `install` - Install to system PATH
+- `uninstall` - Remove installed binary
+- `clean` - Clean build artifacts
+- `lint` - Run SwiftLint
+- `format` - Format code with SwiftFormat
+- `xcode` - Open project in Xcode
+- `resolve` - Resolve package dependencies
+- `update` - Update package dependencies
+
+## Dependencies
+
+- [ArgumentParser](https://github.com/apple/swift-argument-parser) - Command-line argument parsing
+- [SWXMLHash](https://github.com/drmohundro/SWXMLHash) - XML parsing library
 
 ## License
-MIT
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
