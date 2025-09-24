@@ -1,0 +1,158 @@
+import Foundation
+
+/// Handles resolution of CocoaPods specifications to Swift Package Manager dependencies
+public class PodSpecResolver {
+    private let logger: Logger
+    
+    public init(logger: Logger) {
+        self.logger = logger
+    }
+    
+    /// Resolve a CocoaPods dependency to SPM information
+    /// - Parameter dependency: The CocoaPods dependency to resolve
+    /// - Returns: PodSpecInfo if successfully resolved, nil otherwise
+    public func resolvePodSpec(for dependency: PodDependency) async -> PodSpecInfo? {
+        logger.debug("Resolving pod spec for \(dependency.name) (\(dependency.spec))")
+        
+        do {
+            let podSpecInfo = try await fetchPodSpecInfo(name: dependency.name, version: dependency.spec)
+            logger.debug("Successfully resolved pod spec for \(dependency.name)")
+            return podSpecInfo
+        } catch {
+            logger.debug("Failed to resolve pod spec for \(dependency.name): \(error.localizedDescription)")
+            return nil
+        }
+    }
+    
+    /// Convert CocoaPods spec to SPM requirement format
+    /// - Parameter spec: The CocoaPods version specification
+    /// - Returns: Equivalent SPM requirement
+    public static func convertSpecToSPMRequirement(_ spec: String, sourceTag: String? = nil) -> SPMRequirement {
+        let trimmedSpec = spec.trimmingCharacters(in: .whitespaces)
+        
+        // If we have a source tag, prefer using it
+        if let tag = sourceTag {
+            return .tag(tag)
+        }
+        
+        // Handle common CocoaPods version patterns
+        if trimmedSpec.hasPrefix("~>") {
+            let version = String(trimmedSpec.dropFirst(2).trimmingCharacters(in: .whitespaces))
+            return .upToNextMajor(version)
+        } else if trimmedSpec.hasPrefix(">=") {
+            let version = String(trimmedSpec.dropFirst(2).trimmingCharacters(in: .whitespaces))
+            return .from(version)
+        } else if trimmedSpec.hasPrefix("=") {
+            let version = String(trimmedSpec.dropFirst(1).trimmingCharacters(in: .whitespaces))
+            return .exact(version)
+        } else if trimmedSpec.hasPrefix(">") {
+            let version = String(trimmedSpec.dropFirst(1).trimmingCharacters(in: .whitespaces))
+            return .from(version)
+        } else {
+            // Default to exact version if no prefix
+            return .exact(trimmedSpec)
+        }
+    }
+    
+    // MARK: - Private Methods
+    
+    private func fetchPodSpecInfo(name: String, version: String) async throws -> PodSpecInfo {
+        let command = "pod spec cat \(name)"
+        let versionCommand = version.isEmpty ? command : "\(command) --version=\(version)"
+        
+        logger.debug("Executing: \(versionCommand)")
+        
+        let process = Process()
+        process.launchPath = "/usr/bin/env"
+        process.arguments = ["bash", "-c", versionCommand]
+        
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = pipe
+        
+        return try await withCheckedThrowingContinuation { continuation in
+            process.terminationHandler = { _ in
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                
+                guard let output = String(data: data, encoding: .utf8) else {
+                    continuation.resume(throwing: PodSpecError.invalidOutput("Could not decode pod spec output"))
+                    return
+                }
+                
+                if process.terminationStatus != 0 {
+                    continuation.resume(throwing: PodSpecError.commandFailed("pod spec cat failed: \(output)"))
+                    return
+                }
+                
+                do {
+                    let podSpecInfo = try self.parsePodSpecOutput(output, name: name, version: version)
+                    continuation.resume(returning: podSpecInfo)
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+            
+            do {
+                try process.run()
+            } catch {
+                continuation
+                    .resume(throwing: PodSpecError
+                        .commandFailed("Failed to execute pod spec cat: \(error.localizedDescription)"))
+            }
+        }
+    }
+    
+    private func parsePodSpecOutput(_ output: String, name: String, version: String) throws -> PodSpecInfo {
+        guard let data = output.data(using: .utf8) else {
+            throw PodSpecError.invalidOutput("Could not encode pod spec output as UTF-8")
+        }
+        
+        do {
+            guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                throw PodSpecError.invalidJSON("Pod spec output is not valid JSON")
+            }
+            
+            let extractedVersion = json["version"] as? String ?? version
+            
+            // Extract source information
+            var sourceUrl: String?
+            var sourceTag: String?
+            var sourceBranch: String?
+            
+            if let source = json["source"] as? [String: Any] {
+                sourceUrl = source["git"] as? String
+                sourceTag = source["tag"] as? String
+                sourceBranch = source["branch"] as? String
+            }
+            
+            return PodSpecInfo(
+                name: name,
+                version: extractedVersion,
+                sourceUrl: sourceUrl,
+                sourceTag: sourceTag,
+                sourceBranch: sourceBranch
+            )
+            
+        } catch {
+            throw PodSpecError.invalidJSON("Failed to parse pod spec JSON: \(error.localizedDescription)")
+        }
+    }
+}
+
+/// Errors that can occur during pod spec resolution
+public enum PodSpecError: Error, LocalizedError {
+    case commandFailed(String)
+    case invalidOutput(String)
+    case invalidJSON(String)
+    
+    public var errorDescription: String? {
+        switch self {
+        case let .commandFailed(message):
+            "Pod spec command failed: \(message)"
+        case let .invalidOutput(message):
+            "Invalid pod spec output: \(message)"
+        case let .invalidJSON(message):
+            "Invalid pod spec JSON: \(message)"
+        }
+    }
+}
