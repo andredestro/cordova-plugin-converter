@@ -24,8 +24,21 @@ public class PodSpecResolver {
         }
     }
     
-    /// Convert CocoaPods spec to SPM requirement format
-    /// - Parameter spec: The CocoaPods version specification
+    /// Converts CocoaPods version specifications to equivalent Swift Package Manager requirements.
+    /// Follows the CocoaPods and RubyGems versioning patterns documented at:
+    /// - https://guides.cocoapods.org/syntax/podfile.html#pod
+    /// - https://guides.rubygems.org/patterns/#semantic-versioning
+    ///
+    /// Supported conversions:
+    /// - `= 1.0.0` → `.exact("1.0.0")`
+    /// - `> 1.0.0`, `>= 1.0.0` → `.from("1.0.0")`
+    /// - `~> 2.1` → `.upToNextMajor("2.1")` (>= 2.1.0, < 3.0.0)
+    /// - `~> 2.1.3` → `.upToNextMinor("2.1.3")` (>= 2.1.3, < 2.2.0)
+    /// - `< 2.0.0`, `<= 2.0.0` → `.upToNextMajor("2.0.0")` (SPM limitation)
+    ///
+    /// - Parameters:
+    ///   - spec: The CocoaPods version specification
+    ///   - sourceTag: Optional source tag that takes precedence over version spec
     /// - Returns: Equivalent SPM requirement
     public static func convertSpecToSPMRequirement(_ spec: String, sourceTag: String? = nil) -> SPMRequirement {
         let trimmedSpec = spec.trimmingCharacters(in: .whitespaces)
@@ -38,13 +51,30 @@ public class PodSpecResolver {
         // Handle common CocoaPods version patterns
         if trimmedSpec.hasPrefix("~>") {
             let version = String(trimmedSpec.dropFirst(2).trimmingCharacters(in: .whitespaces))
-            return .upToNextMajor(version)
+            // ~> works based on the last component specified
+            // ~> 2.1 means >= 2.1.0 and < 3.0.0 (upToNextMajor)
+            // ~> 2.1.3 means >= 2.1.3 and < 2.2.0 (upToNextMinor)
+            let components = version.split(separator: ".").map(String.init)
+            if components.count >= 3 {
+                // Has patch version, use upToNextMinor
+                return .upToNextMinor(version)
+            } else {
+                // Only major.minor, use upToNextMajor
+                return .upToNextMajor(version)
+            }
         } else if trimmedSpec.hasPrefix(">=") {
             let version = String(trimmedSpec.dropFirst(2).trimmingCharacters(in: .whitespaces))
             return .from(version)
+        } else if trimmedSpec.hasPrefix("<=") {
+            let version = String(trimmedSpec.dropFirst(2).trimmingCharacters(in: .whitespaces))
+            return .upToNextMajor(version) // SPM doesn't have direct <=, use closest equivalent
         } else if trimmedSpec.hasPrefix("=") {
             let version = String(trimmedSpec.dropFirst(1).trimmingCharacters(in: .whitespaces))
             return .exact(version)
+        } else if trimmedSpec.hasPrefix("<") {
+            let version = String(trimmedSpec.dropFirst(1).trimmingCharacters(in: .whitespaces))
+            // SPM doesn't have direct <, use upToNextMajor as closest equivalent
+            return .upToNextMajor(version)
         } else if trimmedSpec.hasPrefix(">") {
             let version = String(trimmedSpec.dropFirst(1).trimmingCharacters(in: .whitespaces))
             return .from(version)

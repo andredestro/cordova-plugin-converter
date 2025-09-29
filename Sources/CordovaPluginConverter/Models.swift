@@ -72,6 +72,7 @@ public enum SPMRequirement: Equatable {
     case exact(String)
     case from(String)
     case upToNextMajor(String)
+    case upToNextMinor(String)
     case branch(String)
     case tag(String)
     
@@ -83,6 +84,8 @@ public enum SPMRequirement: Equatable {
             "from: \"\(version)\""
         case let .upToNextMajor(version):
             ".upToNextMajor(from: \"\(version)\")"
+        case let .upToNextMinor(version):
+            ".upToNextMinor(from: \"\(version)\")"
         case let .branch(branch):
             "branch: \"\(branch)\""
         case let .tag(tag):
