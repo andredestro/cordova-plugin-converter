@@ -45,12 +45,15 @@ public class CordovaToSPMConverter {
             // Step 4: Update plugin.xml if needed
             let xmlUpdateResult = try updatePluginXMLIfNeeded(metadata, at: pluginXMLPath)
 
-            // Step 5: Update .gitignore if requested (after plugin.xml update)
+            // Step 5: Add conditional Cordova imports to Swift files
+            _ = addCordovaImportsToSwiftFiles(in: pluginXMLPath.directoryPath)
+
+            // Step 6: Update .gitignore if requested (after plugin.xml update)
             if !options.noGitignore {
                 updateGitignoreIfRequested(in: pluginXMLPath.directoryPath)
             }
 
-            // Step 6: Display final summary
+            // Step 7: Display final summary
             displayFinalSummary(
                 metadata,
                 packageResult: packageResult,
@@ -286,5 +289,13 @@ public class CordovaToSPMConverter {
         } else {
             logger.success("Conversion completed! Your Package.swift is ready to use.")
         }
+    }
+    
+    /// Add conditional Cordova imports to Swift files in src/ios directory
+    /// - Parameter pluginDirectory: The root directory of the plugin
+    /// - Returns: True if successful, false otherwise
+    private func addCordovaImportsToSwiftFiles(in pluginDirectory: String) -> Bool {
+        let swiftImportManager = SwiftImportManager(logger: logger, fileManager: fileManager)
+        return swiftImportManager.addCordovaImports(in: pluginDirectory)
     }
 }
