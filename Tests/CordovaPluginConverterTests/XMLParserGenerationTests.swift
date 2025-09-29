@@ -29,11 +29,11 @@ final class XMLParserGenerationTests: XCTestCase {
             originalXmlContent: originalXML
         )
 
-        let updatedXML = XMLParser.generateUpdatedXML(from: metadata, removePodspec: true)
+        let updatedXML = XMLParser.generateUpdatedXML(from: metadata, addNospmAttribute: true)
 
         // Should update all iOS platforms
         XCTAssertTrue(updatedXML.contains("platform name=\"ios\" package=\"swift\""))
-        XCTAssertFalse(updatedXML.contains("<podspec>"))
+        XCTAssertTrue(updatedXML.contains("nospm=\"true\""))
 
         // Android platform should remain unchanged
         XCTAssertTrue(updatedXML.contains("platform name=\"android\""))
@@ -71,7 +71,7 @@ final class XMLParserGenerationTests: XCTestCase {
             originalXmlContent: originalXML
         )
 
-        let updatedXML = XMLParser.generateUpdatedXML(from: metadata, removePodspec: true)
+        let updatedXML = XMLParser.generateUpdatedXML(from: metadata, addNospmAttribute: true)
 
         // Should preserve plugin metadata
         XCTAssertTrue(updatedXML.contains("<name>Preserve Test</name>"))
@@ -90,7 +90,7 @@ final class XMLParserGenerationTests: XCTestCase {
 
         // iOS platform should be updated
         XCTAssertTrue(updatedXML.contains("platform name=\"ios\" package=\"swift\""))
-        XCTAssertFalse(updatedXML.contains("<podspec>"))
+        XCTAssertTrue(updatedXML.contains("nospm=\"true\""))
         XCTAssertTrue(updatedXML.contains("ios/Plugin.m"))
     }
 
@@ -116,11 +116,12 @@ final class XMLParserGenerationTests: XCTestCase {
             originalXmlContent: originalXML
         )
 
-        let updatedXML = XMLParser.generateUpdatedXML(from: metadata, removePodspec: false)
+        let updatedXML = XMLParser.generateUpdatedXML(from: metadata, addNospmAttribute: false)
 
-        // Should keep podspec when removePodspec is false
+        // Should keep podspec when addNospmAttribute is false
         XCTAssertTrue(updatedXML.contains("<podspec>"))
         XCTAssertTrue(updatedXML.contains("KeepThisPod"))
+        XCTAssertFalse(updatedXML.contains("nospm=\"true\""))
 
         // Should still add package="swift"
         XCTAssertTrue(updatedXML.contains("platform name=\"ios\" package=\"swift\""))
@@ -128,7 +129,7 @@ final class XMLParserGenerationTests: XCTestCase {
 
     func testGenerateUpdatedXMLWithComplexStructure() {
         let (_, metadata) = createComplexPluginTestData()
-        let updatedXML = XMLParser.generateUpdatedXML(from: metadata, removePodspec: true)
+        let updatedXML = XMLParser.generateUpdatedXML(from: metadata, addNospmAttribute: true)
         
         verifyComplexPluginMetadataPreserved(updatedXML)
         verifyComplexPluginIOSPlatformUpdated(updatedXML)
@@ -219,8 +220,7 @@ final class XMLParserGenerationTests: XCTestCase {
     private func verifyComplexPluginIOSPlatformUpdated(_ updatedXML: String) {
         // iOS platform should be updated
         XCTAssertTrue(updatedXML.contains("platform name=\"ios\" package=\"swift\""))
-        XCTAssertFalse(updatedXML.contains("<podspec>"))
-        XCTAssertFalse(updatedXML.contains("ComplexDependency"))
+        XCTAssertTrue(updatedXML.contains("nospm=\"true\""))
         
         // Should preserve other iOS elements
         XCTAssertTrue(updatedXML.contains("CDVComplexPlugin.h"))

@@ -91,7 +91,7 @@ final class XMLParserBasicTests: XCTestCase {
         }
     }
 
-    func testGenerateUpdatedXMLRemovesPodspec() {
+    func testGenerateUpdatedXMLAddsNospmAttribute() {
         let originalXML = """
         <?xml version="1.0" encoding="UTF-8"?>
         <plugin id="test.plugin" version="1.0.0">
@@ -115,10 +115,47 @@ final class XMLParserBasicTests: XCTestCase {
 
         let updatedXML = XMLParser.generateUpdatedXML(from: metadata)
 
-        XCTAssertFalse(updatedXML.contains("<podspec>"))
-        XCTAssertFalse(updatedXML.contains("</podspec>"))
-        XCTAssertFalse(updatedXML.contains("AFNetworking"))
+        XCTAssertTrue(updatedXML.contains("nospm=\"true\""))
+        XCTAssertTrue(updatedXML.contains("<podspec>"))
+        XCTAssertTrue(updatedXML.contains("AFNetworking"))
         XCTAssertTrue(updatedXML.contains("source-file"))
+    }
+
+    func testGenerateUpdatedXMLHandlesSelfClosingPodTags() {
+        let originalXML = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <plugin id="test.plugin" version="1.0.0">
+            <platform name="ios">
+                <podspec>
+                    <pods>
+                        <pod name="OSInAppBrowserLib" spec="2.2.1" />
+                        <pod name="AnotherPod" spec="1.0.0">
+                        </pod>
+                    </pods>
+                </podspec>
+            </platform>
+        </plugin>
+        """
+
+        let metadata = PluginMetadata(
+            pluginId: "test.plugin",
+            dependencies: [
+                PodDependency(name: "OSInAppBrowserLib", spec: "2.2.1"),
+                PodDependency(name: "AnotherPod", spec: "1.0.0")
+            ],
+            hasPodspec: true,
+            originalXmlContent: originalXML
+        )
+
+        let updatedXML = XMLParser.generateUpdatedXML(from: metadata)
+        
+        // Should correctly handle self-closing tags
+        XCTAssertTrue(updatedXML.contains("nospm=\"true\""))
+        XCTAssertFalse(updatedXML.contains("/ nospm=\"true\">"))
+        
+        // Verify specific transformations
+        XCTAssertTrue(updatedXML.contains("OSInAppBrowserLib"))
+        XCTAssertTrue(updatedXML.contains("AnotherPod"))
     }
 
     func testGenerateUpdatedXMLAddsSwiftPackage() {

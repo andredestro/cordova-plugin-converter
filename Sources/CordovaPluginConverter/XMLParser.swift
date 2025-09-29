@@ -86,12 +86,12 @@ public class XMLParser {
         )
     }
 
-    /// Generate updated plugin.xml content with package="swift" added and optionally podspec removed
+    /// Generate updated plugin.xml content with iOS platform package attribute
     /// - Parameters:
     ///   - metadata: Original plugin metadata
-    ///   - removePodspec: Whether to remove the podspec section (default: true)
-    /// - Returns: Updated XML content with package="swift" for iOS platform
-    public static func generateUpdatedXML(from metadata: PluginMetadata, removePodspec: Bool = true) -> String {
+    ///   - addNospmAttribute: Whether to add nospm="true" attribute to pod elements (default: true)
+    /// - Returns: Updated XML content with package="swift" for iOS platform and nospm attributes
+    public static func generateUpdatedXML(from metadata: PluginMetadata, addNospmAttribute: Bool = true) -> String {
         var updatedContent = metadata.originalXmlContent
 
         // First: Always ensure iOS platform has package="swift" attribute
@@ -120,14 +120,35 @@ public class XMLParser {
             updatedContent = (updatedContent as NSString).replacingCharacters(in: match.range, with: replacement)
         }
 
-        // Second: Remove podspec section using regex (only if requested)
-        if removePodspec {
-            let podspecPattern = #"<podspec>[\s\S]*?</podspec>"#
-            updatedContent = updatedContent.replacingOccurrences(
-                of: podspecPattern,
-                with: "",
-                options: .regularExpression
-            )
+        // Second: Add nospm="true" attribute to pod elements (if requested)
+        if addNospmAttribute {
+            let podPattern = #"<pod\s+([^>]*?)/?>"#
+            guard let podRegex = try? NSRegularExpression(pattern: podPattern, options: []) else {
+                return updatedContent // Return content if regex fails
+            }
+
+            let podMatches = podRegex.matches(in: updatedContent, range: NSRange(location: 0, length: (updatedContent as NSString).length))
+
+            for match in podMatches.reversed() {
+                let matchedString = (updatedContent as NSString).substring(with: match.range)
+                let replacement: String = if matchedString.contains("nospm=") {
+                    // Replace existing nospm attribute with "true"
+                    matchedString.replacingOccurrences(
+                        of: #"nospm="[^"]*""#,
+                        with: #"nospm="true""#,
+                        options: .regularExpression
+                    )
+                } else {
+                    // Add nospm="true" attribute - handle both self-closing and regular tags
+                    if matchedString.contains("/>") {
+                        matchedString.replacingOccurrences(of: "/>", with: " nospm=\"true\" />")
+                    } else {
+                        matchedString.replacingOccurrences(of: ">", with: " nospm=\"true\">")
+                    }
+                }
+
+                updatedContent = (updatedContent as NSString).replacingCharacters(in: match.range, with: replacement)
+            }
         }
 
         return updatedContent

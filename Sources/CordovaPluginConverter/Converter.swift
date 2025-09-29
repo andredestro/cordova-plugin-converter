@@ -205,22 +205,11 @@ public class CordovaToSPMConverter {
         // Always add package="swift"
         logger.info("Adding package=\"swift\" attribute to iOS platform")
 
-        var shouldRemovePodspec = false
         var updateMessage = "Updated plugin.xml (added package=\"swift\" to iOS platform)"
 
         if metadata.hasPodspec {
-            shouldRemovePodspec = userInteraction.confirmAction(
-                "Remove <podspec> section from plugin.xml?",
-                defaultYes: true
-            )
-
-            if shouldRemovePodspec {
-                logger.info("Will remove <podspec> section from plugin.xml")
-                updateMessage = "Updated plugin.xml (added package=\"swift\" and removed <podspec> section)"
-            } else {
-                logger.info("Keeping <podspec> section in plugin.xml")
-                updateMessage = "Updated plugin.xml (added package=\"swift\" and kept <podspec> section)"
-            }
+            logger.info("Adding nospm=\"true\" attribute to <pod> elements in plugin.xml")
+            updateMessage = "Updated plugin.xml (added package=\"swift\" and nospm=\"true\" to pod elements)"
         }
 
         // Create backup before modifying if backup flag is enabled
@@ -229,7 +218,7 @@ public class CordovaToSPMConverter {
         }
 
         // Generate updated XML content
-        let updatedXML = XMLParser.generateUpdatedXML(from: metadata, removePodspec: shouldRemovePodspec)
+        let updatedXML = XMLParser.generateUpdatedXML(from: metadata, addNospmAttribute: metadata.hasPodspec)
 
         // Write updated plugin.xml
         try fileManager.writeFile(content: updatedXML, to: path, createDirectories: false)
