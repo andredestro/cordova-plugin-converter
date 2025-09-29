@@ -113,30 +113,69 @@ public class PodSpecResolver {
             }
             
             let extractedVersion = json["version"] as? String ?? version
+            let homepage = json["homepage"] as? String
+            let vendoredFrameworks = json["vendored_frameworks"] as? String
             
-            // Extract source information
-            var sourceUrl: String?
-            var sourceTag: String?
-            var sourceBranch: String?
+            // Extract and determine source type
+            let sourceType = extractSourceType(from: json, podName: name)
             
-            if let source = json["source"] as? [String: Any] {
-                sourceUrl = source["git"] as? String
-                sourceTag = source["tag"] as? String
-                sourceBranch = source["branch"] as? String
-            }
+            logger.debug("Parsed pod spec for \(name): version=\(extractedVersion), sourceType=\(sourceType.description)")
             
             return PodSpecInfo(
                 name: name,
                 version: extractedVersion,
-                sourceUrl: sourceUrl,
-                sourceTag: sourceTag,
-                sourceBranch: sourceBranch
+                sourceType: sourceType,
+                homepage: homepage,
+                vendoredFrameworks: vendoredFrameworks
             )
             
         } catch {
             throw PodSpecError.invalidJSON("Failed to parse pod spec JSON: \(error.localizedDescription)")
         }
     }
+    
+    private func extractSourceType(from json: [String: Any], podName: String) -> PodSourceType {
+        guard let source = json["source"] as? [String: Any] else {
+            logger.debug("No source found in podspec for \(podName)")
+            return .unknown
+        }
+        
+        // Check for Git source
+        if let gitUrl = source["git"] as? String {
+            let tag = source["tag"] as? String
+            let branch = source["branch"] as? String
+            logger.debug("Found Git source for \(podName): \(gitUrl)")
+            return .git(url: gitUrl, tag: tag, branch: branch)
+        }
+        
+        // Check for HTTP source (ZIP, TAR, etc.)
+        if let httpUrl = source["http"] as? String {
+            logger.debug("Found HTTP source for \(podName): \(httpUrl)")
+            return .http(url: httpUrl)
+        }
+        
+        // Check for local source
+        if let localPath = source["path"] as? String {
+            logger.debug("Found local source for \(podName): \(localPath)")
+            return .local(path: localPath)
+        }
+        
+        // Check for other source types (SVN, Mercurial, etc.)
+        if let svnUrl = source["svn"] as? String {
+            logger.debug("Found SVN source for \(podName): \(svnUrl) (not supported)")
+            return .unknown
+        }
+        
+        if let hgUrl = source["hg"] as? String {
+            logger.debug("Found Mercurial source for \(podName): \(hgUrl) (not supported)")
+            return .unknown
+        }
+        
+        logger.debug("Unknown source type for \(podName): \(source)")
+        return .unknown
+    }
+    
+
 }
 
 /// Errors that can occur during pod spec resolution

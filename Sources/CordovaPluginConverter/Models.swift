@@ -18,26 +18,50 @@ public struct PodDependency: Equatable, Codable {
     }
 }
 
+/// Types of CocoaPods source configurations
+public enum PodSourceType: Equatable {
+    case git(url: String, tag: String?, branch: String?)
+    case http(url: String)
+    case local(path: String)
+    case unknown
+    
+    public var description: String {
+        switch self {
+        case let .git(url, tag, branch):
+            var desc = "Git: \(url)"
+            if let tag = tag { desc += " (tag: \(tag))" }
+            if let branch = branch { desc += " (branch: \(branch))" }
+            return desc
+        case let .http(url):
+            return "HTTP: \(url)"
+        case let .local(path):
+            return "Local: \(path)"
+        case .unknown:
+            return "Unknown source type"
+        }
+    }
+}
+
 /// Represents information extracted from a CocoaPods specification
 public struct PodSpecInfo: Equatable {
     public let name: String
     public let version: String
-    public let sourceUrl: String?
-    public let sourceTag: String?
-    public let sourceBranch: String?
+    public let sourceType: PodSourceType
+    public let homepage: String?
+    public let vendoredFrameworks: String?
 
     public init(
         name: String,
         version: String,
-        sourceUrl: String? = nil,
-        sourceTag: String? = nil,
-        sourceBranch: String? = nil
+        sourceType: PodSourceType,
+        homepage: String? = nil,
+        vendoredFrameworks: String? = nil
     ) {
         self.name = name
         self.version = version
-        self.sourceUrl = sourceUrl
-        self.sourceTag = sourceTag
-        self.sourceBranch = sourceBranch
+        self.sourceType = sourceType
+        self.homepage = homepage
+        self.vendoredFrameworks = vendoredFrameworks
     }
 }
 
@@ -126,20 +150,13 @@ public struct SPMProduct: Equatable {
     }
 }
 
-/// Types of SPM targets
-public enum SPMTargetType: String {
-    case target
-}
-
 /// Represents a Swift Package Manager target
 public struct SPMTarget: Equatable {
     public let name: String
-    public let type: SPMTargetType
     public let dependencies: [String]
 
-    public init(name: String, type: SPMTargetType, dependencies: [String] = []) {
+    public init(name: String, dependencies: [String] = []) {
         self.name = name
-        self.type = type
         self.dependencies = dependencies
     }
 }
@@ -156,25 +173,42 @@ public enum ResolutionStatus: Equatable {
     case notALibrary
     case timeout
     case error(String)
+    case httpSourceFound(gitUrl: String?)  // HTTP source found, optionally with inferred Git URL
+    case xcframeworkFound(gitUrl: String?, downloadUrl: String)  // XCFramework found
+    case requiresManualIntegration(reason: String)  // Cannot be automatically converted
     
     public var description: String {
         switch self {
         case .resolved:
-            "Successfully resolved"
+            return "Successfully resolved"
         case .podSpecNotFound:
-            "Pod spec not found"
+            return "Pod spec not found"
         case .noGitSource:
-            "No Git source URL"
+            return "No Git source URL"
         case .noPackageSwift:
-            "No Package.swift found"
+            return "No Package.swift found"
         case .packageSwiftNotAccessible:
-            "Package.swift not accessible"
+            return "Package.swift not accessible"
         case .notALibrary:
-            "Not a library package"
+            return "Not a library package"
         case .timeout:
-            "Resolution timed out"
+            return "Resolution timed out"
         case let .error(message):
-            "Error: \(message)"
+            return "Error: \(message)"
+        case let .httpSourceFound(gitUrl):
+            if let url = gitUrl {
+                return "HTTP source found, Git repository inferred: \(url)"
+            } else {
+                return "HTTP source found, no Git repository could be inferred"
+            }
+        case let .xcframeworkFound(gitUrl, downloadUrl):
+            var desc = "XCFramework found at: \(downloadUrl)"
+            if let url = gitUrl {
+                desc += ", Git repository: \(url)"
+            }
+            return desc
+        case let .requiresManualIntegration(reason):
+            return "Requires manual integration: \(reason)"
         }
     }
     

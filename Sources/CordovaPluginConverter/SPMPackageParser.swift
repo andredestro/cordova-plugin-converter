@@ -121,7 +121,7 @@ public class SPMPackageParser {
             if let name = extractCaptureGroup(from: targetsSection, match: match, groupIndex: 1) {
                 // Extract dependencies
                 let dependencies = extractTargetDependencies(from: match.fullMatch, in: targetsSection)
-                targets.append(SPMTarget(name: name, type: .target, dependencies: dependencies))
+                targets.append(SPMTarget(name: name, dependencies: dependencies))
             }
         }
         

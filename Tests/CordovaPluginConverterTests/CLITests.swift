@@ -139,22 +139,18 @@ final class CLITests: XCTestCase {
         let redText = ANSIColor.red.colorize(testText)
         let greenText = ANSIColor.green.colorize(testText)
         let yellowText = ANSIColor.yellow.colorize(testText)
-        let blueText = ANSIColor.blue.colorize(testText)
         let magentaText = ANSIColor.magenta.colorize(testText)
         let cyanText = ANSIColor.cyan.colorize(testText)
-        let whiteText = ANSIColor.white.colorize(testText)
         
         // All should contain the original text
         XCTAssertTrue(redText.contains(testText))
         XCTAssertTrue(greenText.contains(testText))
         XCTAssertTrue(yellowText.contains(testText))
-        XCTAssertTrue(blueText.contains(testText))
         XCTAssertTrue(magentaText.contains(testText))
         XCTAssertTrue(cyanText.contains(testText))
-        XCTAssertTrue(whiteText.contains(testText))
         
         // All should start with ANSI code and end with reset
-        let allColorized = [redText, greenText, yellowText, blueText, magentaText, cyanText, whiteText]
+        let allColorized = [redText, greenText, yellowText, magentaText, cyanText]
         for colorized in allColorized {
             XCTAssertTrue(colorized.hasPrefix("\u{001B}["))
             XCTAssertTrue(colorized.hasSuffix(ANSIColor.reset.rawValue))

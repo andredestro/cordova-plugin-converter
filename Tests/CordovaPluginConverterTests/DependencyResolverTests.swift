@@ -34,22 +34,19 @@ final class DependencyResolverTests: XCTestCase {
         let info1 = PodSpecInfo(
             name: "TestPod",
             version: "1.0.0",
-            sourceUrl: "https://github.com/test/pod.git",
-            sourceTag: "1.0.0"
+            sourceType: .git(url: "https://github.com/test/pod.git", tag: "1.0.0", branch: nil)
         )
         
         let info2 = PodSpecInfo(
             name: "TestPod",
             version: "1.0.0",
-            sourceUrl: "https://github.com/test/pod.git",
-            sourceTag: "1.0.0"
+            sourceType: .git(url: "https://github.com/test/pod.git", tag: "1.0.0", branch: nil)
         )
         
         let info3 = PodSpecInfo(
             name: "DifferentPod",
             version: "1.0.0",
-            sourceUrl: "https://github.com/test/pod.git",
-            sourceTag: "1.0.0"
+            sourceType: .git(url: "https://github.com/test/pod.git", tag: "1.0.0", branch: nil)
         )
         
         XCTAssertEqual(info1, info2)
@@ -100,15 +97,13 @@ final class DependencyResolverTests: XCTestCase {
         let resolvedSuccess = ResolvedDependency(
             originalPod: podDep,
             spmDependency: spmDep,
-            status: .resolved,
-            notes: "Success"
+            status: .resolved
         )
         
         let resolvedFailure = ResolvedDependency(
             originalPod: podDep,
             spmDependency: nil,
-            status: .podSpecNotFound,
-            notes: "Failed"
+            status: .podSpecNotFound
         )
         
         XCTAssertTrue(resolvedSuccess.isResolved)
